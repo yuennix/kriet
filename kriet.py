@@ -1,6 +1,6 @@
 #=====SC SEND BY > KALYAN KING
 #=====TELIGERM :, OX CYBER TEAM
-import os, re, time, json, random, threading
+import os, re, time, json, random
 import requests
 from faker import Faker
 from fake_useragent import UserAgent
@@ -347,26 +347,27 @@ def get_temp_email(fname, lname, domain_choice=None):
 
     return f"{prefix}@{domain}"
 
-def get_temp_code(email):
-    try:
-        sess = requests.Session()
-        headers = {
-            "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-            "accept": "application/json",
-            "cookie": f"email={email}"
-        }
-        res = sess.get(f'https://tempmail.plus/api/mails?email={email}&first_id=0&epin', headers=headers, timeout=10)
-        data = res.json()
-
-        if data.get("result") and data.get("mail_list"):
-            for mail in data["mail_list"]:
-                if mail.get("is_new"):
-                    subject = mail.get("subject", "")
-                    code = re.search(r"(\d+)", subject)
-                    return code.group(1) if code else subject
-        return None
-    except:
-        return None
+def get_temp_code(email, retries=5, interval=2):
+    headers = {
+        "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        "accept": "application/json",
+        "cookie": f"email={email}"
+    }
+    for _ in range(retries):
+        try:
+            sess = requests.Session()
+            res = sess.get(f'https://tempmail.plus/api/mails?email={email}&first_id=0&epin', headers=headers, timeout=8)
+            data = res.json()
+            if data.get("result") and data.get("mail_list"):
+                for mail in data["mail_list"]:
+                    if mail.get("is_new"):
+                        subject = mail.get("subject", "")
+                        code = re.search(r"(\d+)", subject)
+                        return code.group(1) if code else subject
+        except Exception:
+            pass
+        time.sleep(interval)
+    return None
 
 def get_bd_number():
     na = random.choice(['77', '78', '59'])
@@ -438,7 +439,7 @@ def confirm_id(mail, uid, otp, data, ses, password):
         'referer': "https://m.facebook.com/confirmemail.php?next=https%3A%2F%2Fm.facebook.com%2F%3Fdeoia%3D1&soft=hjk",
         'accept-language': "en-GB,en-US;q=0.9,en;q=0.8",
         'priority': "u=1, i"}
-        response = ses.post(url, params=params, data=payload, headers=headers, timeout=10)
+        response = ses.post(url, params=params, data=payload, headers=headers, timeout=15)
         if "checkpoint" in str(response.url):
             # print(Panel(f"{G}[{Y}✓{G}]{W}ID : {R}{uid}", title="DISABLED",border_style="bold green"))
             pass
@@ -452,12 +453,14 @@ def confirm_id(mail, uid, otp, data, ses, password):
 
 def register_account(domain_choice, name_option, gender_option):
     global live, cp
-    # time.sleep(random.uniform(2, 5)) # Slow down initial request
-    while True:
+    max_retries = 5
+    attempt = 0
+    while attempt < max_retries:
+        attempt += 1
         try:
             ses = requests.Session()
+            ses.headers.update({'User-Agent': ugen()})
             res = ses.get('https://touch.facebook.com/reg', timeout=15)
-            # time.sleep(random.uniform(1, 3)) # Human-like delay after loading page
             form = extract_form(res.text)
 
             # Gender Selection
@@ -535,22 +538,16 @@ def register_account(domain_choice, name_option, gender_option):
             if "c_user" in cookies:
                 uid = cookies["c_user"]
                 print(Panel(f"{G}[{Y}✓{G}]{W} LIVE ID CREATED: {G}{uid}\n{G}[{Y}✓{G}]{W} PASS: {G}{password}\n{G}[{Y}✓{G}]{W} NAME: {G}{fname} {lname}\n{G}[{Y}✓{G}]{W} MAIL: {G}{email}",border_style="bold green"))
-
-                # time.sleep(random.uniform(2, 5)) # Removed wait for code
                 code = get_temp_code(email)
                 if code:
-                    # time.sleep(random.uniform(2, 4)) # Human delay before confirming
                     confirm_id(email, uid, code, reg.text, ses, password)
                 live += 1
-                break
+                return
             else:
                 cp += 1
-                # Silent retry logic
                 continue
-
-            # time.sleep(random.uniform(3, 7)) # Removed break between creations
-        except requests.exceptions.ConnectionError:
-            time.sleep(0.3)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            time.sleep(1)
             continue
         except Exception:
             cp += 1
@@ -601,14 +598,13 @@ def main():
         except ValueError:
             limit = 10
 
-        global live, cp
         live = 0
         cp = 0
-        for i in range(1, limit + 1):
-            print(Panel(f"{C}[{i}/{limit}] {W}Creating account...", border_style="bold cyan"))
+        for i in range(limit):
+            print(Panel(f"{Y}Creating account {i+1}/{limit}...", border_style="bold yellow"))
             register_account(domain_choice, name_option, gender_option)
 
-        print(Panel(f"{G}COMPLETED!\n{G}LIVE: {live}\n{R}CP: {cp}", border_style="bold green"))
+        print(Panel(f"{G}COMPLETED!{W}\n{G}LIVE: {live}\n{R}CP: {cp}", border_style="bold green"))
         input("\nPress Enter to return to menu...")
 
 if __name__ == "__main__":
