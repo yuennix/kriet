@@ -1,6 +1,6 @@
 #=====SC SEND BY > KALYAN KING
 #=====TELIGERM :, OX CYBER TEAM
-import os, re, time, json, random, hashlib
+import os, re, time, json, random, threading
 import requests
 from faker import Faker
 from fake_useragent import UserAgent
@@ -452,127 +452,109 @@ def confirm_id(mail, uid, otp, data, ses, password):
 
 def register_account(domain_choice, name_option, gender_option):
     global live, cp
-
-    if gender_option == "1":
-        gender, g_type = "2", "male"
-    elif gender_option == "2":
-        gender, g_type = "1", "female"
-    else:
-        gender, g_type = ("2", "male") if random.random() < 0.5 else ("1", "female")
-
-    if name_option == "1":
-        first_names = FILIPINO_FIRST_NAMES_MALE if g_type == "male" else FILIPINO_FIRST_NAMES_FEMALE
-        last_names  = FILIPINO_LAST_NAMES
-    else:
-        first_names = RPW_FIRST_NAMES_MALE if g_type == "male" else RPW_FIRST_NAMES_FEMALE
-        last_names  = RPW_LAST_NAMES
-
-    fname    = random.choice(first_names)
-    lname    = random.choice(last_names)
-    email    = get_temp_email(fname, lname, domain_choice)
-    password = fake_password(globals().get('CUSTOM_PASS'))
-    bday     = str(random.randint(1, 28))
-    bmonth   = str(random.randint(1, 12))
-    byear    = str(random.randint(1990, 2003))
-
-    for _ in range(2):
+    # time.sleep(random.uniform(2, 5)) # Slow down initial request
+    while True:
         try:
-            user_agent = ugen()
             ses = requests.Session()
-            ses.headers.update({
-                'user-agent': user_agent,
-                'accept-language': 'en-US,en;q=0.9',
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'upgrade-insecure-requests': '1',
-            })
-
-            # Warm up: get base cookies (datr etc.) from facebook.com first
-            ses.get('https://www.facebook.com/', timeout=12)
-
-            # Load the registration page
-            res = ses.get('https://touch.facebook.com/reg', timeout=12)
+            res = ses.get('https://touch.facebook.com/reg', timeout=15)
+            # time.sleep(random.uniform(1, 3)) # Human-like delay after loading page
             form = extract_form(res.text)
 
-            # Skip this attempt if the page didn't give us valid tokens (IP blocked)
-            if not form.get('lsd') or not form.get('reg_instance'):
-                # Try extracting tokens with regex as fallback
-                lsd_m = re.search(r'"lsd",\["_mn_"\],"value","([^"]+)"', res.text)
-                ri_m  = re.search(r'name="reg_instance"\s+value="([^"]+)"', res.text)
-                if lsd_m:
-                    form['lsd'] = lsd_m.group(1)
-                if ri_m:
-                    form['reg_instance'] = ri_m.group(1)
-                if not form.get('lsd') and not form.get('reg_instance'):
-                    cp += 1
-                    continue
+            # Gender Selection
+            if gender_option == "1": # Male
+                gender = "2"
+                g_type = "male"
+            elif gender_option == "2": # Female
+                gender = "1"
+                g_type = "female"
+            else: # Mixed
+                if random.random() < 0.5:
+                    gender = "2"
+                    g_type = "male"
+                else:
+                    gender = "1"
+                    g_type = "female"
+
+            # Name Selection
+            if name_option == "1": # Filipino
+                first_names = FILIPINO_FIRST_NAMES_MALE if g_type == "male" else FILIPINO_FIRST_NAMES_FEMALE
+                last_names = FILIPINO_LAST_NAMES
+            else: # RPW
+                first_names = RPW_FIRST_NAMES_MALE if g_type == "male" else RPW_FIRST_NAMES_FEMALE
+                last_names = RPW_LAST_NAMES
+
+            fname = random.choice(first_names)
+            lname = random.choice(last_names)
+
+            email = get_temp_email(fname, lname, domain_choice)
+            password = fake_password(globals().get('CUSTOM_PASS'))
+
+            # time.sleep(random.uniform(2, 4)) # Delay while "typing" info
 
             payload = {
-                'ccp':               '2',
-                'reg_instance':      form.get('reg_instance', ''),
-                'reg_impression_id': form.get('reg_impression_id', ''),
-                'logger_id':         form.get('logger_id', ''),
-                'firstname':         fname,
-                'lastname':          lname,
-                'birthday_day':      bday,
-                'birthday_month':    bmonth,
-                'birthday_year':     byear,
-                'reg_email__':       email,
-                'reg_passwd__':      password,
-                'sex':               gender,
-                'encpass':           f'#PWD_BROWSER:0:{int(time.time())}:{password}',
-                'submit':            'Sign Up',
-                'fb_dtsg':           form.get('fb_dtsg', ''),
-                'jazoest':           form.get('jazoest', ''),
-                'lsd':               form.get('lsd', ''),
-                '__dyn': '', '__csr': '', '__req': 'q', '__a': '', '__user': '0',
+            'ccp': '2',
+            'reg_instance': form.get('reg_instance'),
+            'reg_impression_id': form.get('reg_impression_id'),
+            'logger_id': form.get('logger_id'),
+            'firstname': fname,
+            'lastname': lname,
+            'birthday_day': str(random.randint(1, 28)),
+            'birthday_month': str(random.randint(1, 12)),
+            'birthday_year': str(random.randint(1990, 2005)),
+            'reg_email__': email,
+            'reg_passwd__': password,
+            'sex': gender,
+            'encpass': f'#PWD_BROWSER:0:{int(time.time())}:{password}',
+            'submit': 'Sign Up',
+            'fb_dtsg': form.get('fb_dtsg', ''),
+            'jazoest': form.get('jazoest'),
+            'lsd': form.get('lsd'),
+            '__dyn': '', '__csr': '', '__req': 'q', '__a': '', '__user': '0'
             }
-            post_headers = {
-                'authority':                  'm.facebook.com',
-                'accept':                     'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'accept-language':            'en-US,en;q=0.9',
-                'cache-control':              'max-age=0',
-                'content-type':               'application/x-www-form-urlencoded',
-                'dpr':                        '2',
-                'origin':                     'https://m.facebook.com',
-                'referer':                    'https://touch.facebook.com/reg',
-                'sec-ch-prefers-color-scheme':'light',
-                'sec-ch-ua':                  '"Not/A)Brand";v="8", "Chromium";v="125", "Google Chrome";v="125"',
-                'sec-ch-ua-mobile':           '?1',
-                'sec-ch-ua-platform':         '"Android"',
-                'sec-fetch-dest':             'document',
-                'sec-fetch-mode':             'navigate',
-                'sec-fetch-site':             'same-origin',
-                'sec-fetch-user':             '?1',
-                'upgrade-insecure-requests':  '1',
-                'user-agent':                 user_agent,
-                'viewport-width':             '980',
-            }
+            headers = {'authority': 'm.facebook.com',
+                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'accept-language': 'en-US;q=0.8,en;q=0.7',
+                    'cache-control': 'max-age=0',
+                    'dpr': '2',
+                    'referer': 'https://m.facebook.com/login/save-device/',
+                    'sec-ch-prefers-color-scheme': 'light',
+                    'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="125", "Google Chrome";v="125"',
+                    'sec-ch-ua-mobile': '?1',
+                    'sec-ch-ua-platform': '"Android"',
+                    'sec-fetch-dest': 'document',
+                    'sec-fetch-mode': 'navigate',
+                    'sec-fetch-site': 'same-origin',
+                    'sec-fetch-user': '?1',
+                    'upgrade-insecure-requests': '1',
+                    'user-agent': ugen(),
+                    'viewport-width': '980'
 
-            time.sleep(random.uniform(1.0, 2.0))
-            reg = ses.post('https://m.facebook.com/reg/submit/', data=payload, headers=post_headers, timeout=15)
+            }
+            reg = ses.post('https://m.facebook.com/reg/submit/', data=payload, headers=headers, timeout=15)
             cookies = ses.cookies.get_dict()
+            if "c_user" in cookies:
+                uid = cookies["c_user"]
+                print(Panel(f"{G}[{Y}✓{G}]{W} LIVE ID CREATED: {G}{uid}\n{G}[{Y}✓{G}]{W} PASS: {G}{password}\n{G}[{Y}✓{G}]{W} NAME: {G}{fname} {lname}\n{G}[{Y}✓{G}]{W} MAIL: {G}{email}",border_style="bold green"))
 
-            if 'c_user' in cookies:
-                uid = cookies['c_user']
-                cookie_str = ";".join([f"{k}={v}" for k, v in cookies.items()])
-                print(Panel(
-                    f"{G}[{Y}✓{G}]{W} LIVE ID CREATED: {G}{uid}\n"
-                    f"{G}[{Y}✓{G}]{W} PASS: {G}{password}\n"
-                    f"{G}[{Y}✓{G}]{W} NAME: {G}{fname} {lname}\n"
-                    f"{G}[{Y}✓{G}]{W} MAIL: {G}{email}",
-                    border_style="bold green"
-                ))
-                save_result(uid, password, cookie_str)
+                # time.sleep(random.uniform(2, 5)) # Removed wait for code
                 code = get_temp_code(email)
                 if code:
+                    # time.sleep(random.uniform(2, 4)) # Human delay before confirming
                     confirm_id(email, uid, code, reg.text, ses, password)
                 live += 1
-                return True
+                break
             else:
                 cp += 1
+                # Silent retry logic
+                continue
+
+            # time.sleep(random.uniform(3, 7)) # Removed break between creations
+        except requests.exceptions.ConnectionError:
+            time.sleep(0.3)
+            continue
         except Exception:
-            pass
-    return False
+            cp += 1
+            continue
 
 def main():
     while True:
@@ -619,10 +601,11 @@ def main():
         except ValueError:
             limit = 10
 
+        global live, cp
         live = 0
         cp = 0
         for i in range(1, limit + 1):
-            print(Panel(f"{C}[{i}/{limit}]{W} Creating account...", border_style="bold cyan"))
+            print(Panel(f"{C}[{i}/{limit}] {W}Creating account...", border_style="bold cyan"))
             register_account(domain_choice, name_option, gender_option)
 
         print(Panel(f"{G}COMPLETED!\n{G}LIVE: {live}\n{R}CP: {cp}", border_style="bold green"))
