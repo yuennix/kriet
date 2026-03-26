@@ -1,6 +1,6 @@
 #=====SC SEND BY > KALYAN KING
 #=====TELIGERM :, OX CYBER TEAM
-import os, re, time, json, random, threading, hashlib
+import os, re, time, json, random, hashlib
 import requests
 from faker import Faker
 from fake_useragent import UserAgent
@@ -293,7 +293,6 @@ faker = Faker()
 console=Console()
 live = 0
 cp = 0
-_sem = threading.Semaphore(5)
 #------------[colour]------------#
 R = "[bold red]"
 Y = "[bold yellow]"
@@ -459,10 +458,7 @@ def register_account(domain_choice, name_option, gender_option):
     elif gender_option == "2":
         gender, g_type = "1", "female"
     else:
-        if random.random() < 0.5:
-            gender, g_type = "2", "male"
-        else:
-            gender, g_type = "1", "female"
+        gender, g_type = ("2", "male") if random.random() < 0.5 else ("1", "female")
 
     if name_option == "1":
         first_names = FILIPINO_FIRST_NAMES_MALE if g_type == "male" else FILIPINO_FIRST_NAMES_FEMALE
@@ -471,17 +467,44 @@ def register_account(domain_choice, name_option, gender_option):
         first_names = RPW_FIRST_NAMES_MALE if g_type == "male" else RPW_FIRST_NAMES_FEMALE
         last_names  = RPW_LAST_NAMES
 
+    fname    = random.choice(first_names)
+    lname    = random.choice(last_names)
+    email    = get_temp_email(fname, lname, domain_choice)
+    password = fake_password(globals().get('CUSTOM_PASS'))
+    bday     = str(random.randint(1, 28))
+    bmonth   = str(random.randint(1, 12))
+    byear    = str(random.randint(1990, 2003))
+
     for _ in range(2):
-        _sem.acquire()
         try:
+            user_agent = ugen()
             ses = requests.Session()
+            ses.headers.update({
+                'user-agent': user_agent,
+                'accept-language': 'en-US,en;q=0.9',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'upgrade-insecure-requests': '1',
+            })
+
+            # Warm up: get base cookies (datr etc.) from facebook.com first
+            ses.get('https://www.facebook.com/', timeout=12)
+
+            # Load the registration page
             res = ses.get('https://touch.facebook.com/reg', timeout=12)
             form = extract_form(res.text)
 
-            fname    = random.choice(first_names)
-            lname    = random.choice(last_names)
-            email    = get_temp_email(fname, lname, domain_choice)
-            password = fake_password(globals().get('CUSTOM_PASS'))
+            # Skip this attempt if the page didn't give us valid tokens (IP blocked)
+            if not form.get('lsd') or not form.get('reg_instance'):
+                # Try extracting tokens with regex as fallback
+                lsd_m = re.search(r'"lsd",\["_mn_"\],"value","([^"]+)"', res.text)
+                ri_m  = re.search(r'name="reg_instance"\s+value="([^"]+)"', res.text)
+                if lsd_m:
+                    form['lsd'] = lsd_m.group(1)
+                if ri_m:
+                    form['reg_instance'] = ri_m.group(1)
+                if not form.get('lsd') and not form.get('reg_instance'):
+                    cp += 1
+                    continue
 
             payload = {
                 'ccp':               '2',
@@ -490,9 +513,9 @@ def register_account(domain_choice, name_option, gender_option):
                 'logger_id':         form.get('logger_id', ''),
                 'firstname':         fname,
                 'lastname':          lname,
-                'birthday_day':      str(random.randint(1, 28)),
-                'birthday_month':    str(random.randint(1, 12)),
-                'birthday_year':     str(random.randint(1990, 2003)),
+                'birthday_day':      bday,
+                'birthday_month':    bmonth,
+                'birthday_year':     byear,
                 'reg_email__':       email,
                 'reg_passwd__':      password,
                 'sex':               gender,
@@ -503,7 +526,7 @@ def register_account(domain_choice, name_option, gender_option):
                 'lsd':               form.get('lsd', ''),
                 '__dyn': '', '__csr': '', '__req': 'q', '__a': '', '__user': '0',
             }
-            headers = {
+            post_headers = {
                 'authority':                  'm.facebook.com',
                 'accept':                     'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'accept-language':            'en-US,en;q=0.9',
@@ -521,14 +544,17 @@ def register_account(domain_choice, name_option, gender_option):
                 'sec-fetch-site':             'same-origin',
                 'sec-fetch-user':             '?1',
                 'upgrade-insecure-requests':  '1',
-                'user-agent':                 ugen(),
+                'user-agent':                 user_agent,
                 'viewport-width':             '980',
             }
-            reg = ses.post('https://m.facebook.com/reg/submit/', data=payload, headers=headers, timeout=12)
+
+            time.sleep(random.uniform(1.0, 2.0))
+            reg = ses.post('https://m.facebook.com/reg/submit/', data=payload, headers=post_headers, timeout=15)
             cookies = ses.cookies.get_dict()
 
             if 'c_user' in cookies:
                 uid = cookies['c_user']
+                cookie_str = ";".join([f"{k}={v}" for k, v in cookies.items()])
                 print(Panel(
                     f"{G}[{Y}✓{G}]{W} LIVE ID CREATED: {G}{uid}\n"
                     f"{G}[{Y}✓{G}]{W} PASS: {G}{password}\n"
@@ -536,17 +562,17 @@ def register_account(domain_choice, name_option, gender_option):
                     f"{G}[{Y}✓{G}]{W} MAIL: {G}{email}",
                     border_style="bold green"
                 ))
+                save_result(uid, password, cookie_str)
                 code = get_temp_code(email)
                 if code:
                     confirm_id(email, uid, code, reg.text, ses, password)
                 live += 1
-                return
+                return True
             else:
                 cp += 1
         except Exception:
             pass
-        finally:
-            _sem.release()
+    return False
 
 def main():
     while True:
@@ -593,18 +619,13 @@ def main():
         except ValueError:
             limit = 10
 
-        threads = []
-        for _ in range(limit):
-            t = threading.Thread(target=register_account, args=(domain_choice, name_option, gender_option))
-            t.daemon = True
-            t.start()
-            threads.append(t)
-            time.sleep(0.05)
+        live = 0
+        cp = 0
+        for i in range(1, limit + 1):
+            print(Panel(f"{C}[{i}/{limit}]{W} Creating account...", border_style="bold cyan"))
+            register_account(domain_choice, name_option, gender_option)
 
-        for t in threads:
-            t.join()
-
-        print(Panel(f"{G}COMPLETED!{W}\n{G}LIVE: {live}\n{R}CP: {cp}", border_style="bold green"))
+        print(Panel(f"{G}COMPLETED!\n{G}LIVE: {live}\n{R}CP: {cp}", border_style="bold green"))
         input("\nPress Enter to return to menu...")
 
 if __name__ == "__main__":
